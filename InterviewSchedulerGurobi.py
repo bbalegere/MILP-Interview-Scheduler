@@ -49,16 +49,31 @@ if __name__ == "__main__":
     # Calculate number shortlists for each students
     crit = dict((n, sum(shortlists[n, c] for c in clubs)) for n in names)
 
+    # Rescaled prefs
+    prefsnew = dict()
+
+    for n in names:
+        actpref = dict((c, prefs[n, c] * shortlists[n, c]) for c in clubs if shortlists[n, c] > 0)
+        scaledpref = {key: rank for rank, key in enumerate(sorted(actpref, key=actpref.get), 1)}
+
+        for c, rank in scaledpref.iteritems():
+            prefsnew[n, c] = rank
+
     print('Creating IPLP')
 
     model = Model('interviews')
     vars = model.addVars(slots, clubs, names, vtype=GRB.BINARY, name='G')
+
     # Objective - allocate max students to the initial few slots
     model.setObjective(
-        quicksum(vars[s, c, n] * costs[s] * (totalClubs - prefs[n, c]) for s in slots for n in names for c in clubs),
+        quicksum(
+            vars[s, c, n] * costs[s] * (totalClubs - prefsnew.get((n, c), totalClubs))
+            for s in slots for n in names for c in clubs),
         GRB.MINIMIZE)
 
-    totalstudents = sum(shortlists.values())  # Constraint all students to be allocated
+    totalstudents = sum(shortlists.values())
+
+    # Constraint all students to be allocated
     model.addConstr((vars.sum() == totalstudents))
 
     # Constraint - maximum number in a slot for a club is limited by panels
@@ -90,7 +105,7 @@ if __name__ == "__main__":
             i = 0
             for n in names:
                 if solution[s, c, n] == 1:
-                    l[i] = n + ' ' + str(int(prefs[n, c])) + '_' + str(int(crit[n]))
+                    l[i] = n + ' ' + str(int(prefsnew[n, c])) + '_' + str(int(crit[n]))
                     i = i + 1
 
             line = line + ',' + ','.join(l)
