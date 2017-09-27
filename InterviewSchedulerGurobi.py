@@ -11,9 +11,10 @@ def read_input_csv(filename):
                 row_header = csvline.split(',')
                 continue
             row = csvline.split(',')
+            col_header.add(row[0])
             for i in xrange(1, len(row)):
                 matrix[row[0], row_header[i]] = float(row[i])
-                col_header.add(row[0])
+
     row_header.pop(0)
     col_header = sorted(col_header)
     return matrix, row_header, col_header
@@ -39,17 +40,14 @@ if __name__ == "__main__":
     assert (sorted(names) == sorted(names2))
     totalClubs = len(clubs) + 1
 
-    costs = dict()
+    # Find out max number of panels
+    maxpanels = dict((c, max(panels[s, c] for s in slots)) for c in clubs)
 
-    maxpanels = dict()
-    for c in clubs:
-        maxpanels[c] = 0
-        for s in slots:
-            if panels[s, c] > maxpanels[c]:
-                maxpanels[c] = panels[s, c]
+    # Generate cost of slots
+    costs = dict((slots[s], s + 1) for s in xrange(len(slots)))
 
-    for s in xrange(len(slots)):
-        costs[slots[s]] = s + 1
+    # Calculate number shortlists for each students
+    crit = dict((n, sum(shortlists[n, c] for c in clubs)) for n in names)
 
     print('Creating IPLP')
 
@@ -92,7 +90,7 @@ if __name__ == "__main__":
             i = 0
             for n in names:
                 if solution[s, c, n] == 1:
-                    l[i] = n + ' ' + str(prefs[n, c])
+                    l[i] = n + ' ' + str(int(prefs[n, c])) + '_' + str(int(crit[n]))
                     i = i + 1
 
             line = line + ',' + ','.join(l)
