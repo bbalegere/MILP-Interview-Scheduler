@@ -114,5 +114,26 @@ if __name__ == "__main__":
 
     schedout.close()
 
+    namesout = open('names.csv', 'w')
+    line = 'Slot'
+
+    for n in names:
+        line = line + ',' + n
+
+    namesout.write(line + '\n')
+    for s in slots:
+        line = s
+        for n in names:
+            l = ''
+            for c in clubs:
+                if solution[s, c, n] == 1:
+                    l = c + '_' + str(int(prefsnew[n, c]))
+
+            line = line + ',' + l
+
+        namesout.write(line + '\n')
+
+    namesout.close()
+
     print(model.status)
     print(datetime.now().time())
