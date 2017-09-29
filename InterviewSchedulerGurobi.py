@@ -62,33 +62,33 @@ if __name__ == "__main__":
     print('Creating IPLP')
 
     model = Model('interviews')
-    vars = model.addVars(slots, clubs, names, vtype=GRB.BINARY, name='G')
+    choices = model.addVars(slots, clubs, names, vtype=GRB.BINARY, name='G')
 
     # Objective - allocate max students to the initial few slots
     model.setObjective(
         quicksum(
-            vars[s, c, n] * costs[s] * (totalClubs - prefsnew.get((n, c), totalClubs))
+            choices[s, c, n] * costs[s] * (crit[n] + 1 - prefsnew.get((n, c), crit[n]))
             for s in slots for n in names for c in clubs),
         GRB.MINIMIZE)
 
-    totalstudents = sum(shortlists.values())
+    total = min(sum(shortlists.values()), sum(panels.values()))
 
     # Constraint all students to be allocated
-    model.addConstr((vars.sum() == totalstudents))
+    model.addConstr(choices.sum(), GRB.EQUAL, total, 'maxallocate')
 
     # Constraint - maximum number in a slot for a club is limited by panels
-    model.addConstrs((vars.sum(s, c, '*') <= panels[s, c] for s in slots for c in clubs))
+    model.addConstrs((choices.sum(s, c, '*') <= panels[s, c] for s in slots for c in clubs))
 
     # Constraint - allocate student only if he has a shortlist
-    model.addConstrs((vars.sum('*', c, n) <= shortlists[n, c] for n in names for c in clubs))
+    model.addConstrs((choices.sum('*', c, n) <= shortlists[n, c] for n in names for c in clubs))
 
     # Constraint - slots should not conflict for a student
-    model.addConstrs((vars.sum(s, '*', n) <= 1 for s in slots for n in names))
+    model.addConstrs((choices.sum(s, '*', n) <= 1 for s in slots for n in names))
 
     print('Optimising')
     model.optimize()
 
-    solution = model.getAttr('X', vars)
+    solution = model.getAttr('X', choices)
 
     schedout = open('schedule.csv', 'w')
     line = 'Slot'
@@ -101,14 +101,14 @@ if __name__ == "__main__":
     for s in slots:
         line = s
         for c in clubs:
-            l = [''] * int(maxpanels[c])
+            row = [''] * int(maxpanels[c])
             i = 0
             for n in names:
                 if solution[s, c, n] == 1:
-                    l[i] = n + ' ' + str(int(prefsnew[n, c])) + '_' + str(int(crit[n]))
+                    row[i] = n + ' ' + str(int(prefsnew[n, c])) + '_' + str(int(crit[n]))
                     i = i + 1
 
-            line = line + ',' + ','.join(l)
+            line = line + ',' + ','.join(row)
 
         schedout.write(line + '\n')
 
@@ -124,12 +124,12 @@ if __name__ == "__main__":
     for s in slots:
         line = s
         for n in names:
-            l = ''
+            row = ''
             for c in clubs:
                 if solution[s, c, n] == 1:
-                    l = c + '_' + str(int(prefsnew[n, c]))
+                    row = c + '_' + str(int(prefsnew[n, c]))
 
-            line = line + ',' + l
+            line = line + ',' + row
 
         namesout.write(line + '\n')
 
