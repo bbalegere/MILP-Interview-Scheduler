@@ -12,7 +12,7 @@ def read_input_csv(filename):
                 continue
             row = csvline.split(',')
             col_header.add(row[0])
-            for i in xrange(1, len(row)):
+            for i in range(1, len(row)):
                 matrix[row[0], row_header[i]] = float(row[i])
 
     row_header.pop(0)
@@ -22,10 +22,13 @@ def read_input_csv(filename):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print >> sys.stderr, "Usage: InterviewScheduler Shortlists.csv SlotsPanels.csv Prefs.csv"
+        print("Usage: InterviewScheduler Shortlists.csv SlotsPanels.csv Prefs.csv")
         exit(-1)
-    shortlists, clubs, names = read_input_csv(sys.argv[1])
+
     print(datetime.now().time())
+
+    shortlists, clubs, names = read_input_csv(sys.argv[1])
+
     print('Number of Clubs')
     print(len(clubs))
     print('Number of Candidates')
@@ -44,7 +47,7 @@ if __name__ == "__main__":
     maxpanels = dict((c, max(panels[s, c] for s in slots)) for c in clubs)
 
     # Generate cost of slots
-    costs = dict((slots[s], s + 1) for s in xrange(len(slots)))
+    costs = dict((slots[s], s + 1) for s in range(len(slots)))
 
     # Calculate number shortlists for each students
     crit = dict((n, sum(shortlists[n, c] for c in clubs)) for n in names)
@@ -56,7 +59,7 @@ if __name__ == "__main__":
         actpref = dict((c, prefs[n, c] * shortlists[n, c]) for c in clubs if shortlists[n, c] > 0)
         scaledpref = {key: rank for rank, key in enumerate(sorted(actpref, key=actpref.get), 1)}
 
-        for c, rank in scaledpref.iteritems():
+        for c, rank in scaledpref.items():
             prefsnew[n, c] = rank
 
     print('Creating IPLP')
@@ -67,7 +70,7 @@ if __name__ == "__main__":
     # Objective - allocate max students to the initial few slots
     model.setObjective(
         quicksum(
-            choices[s, c, n] * costs[s] * (crit[n] + 1 - prefsnew.get((n, c), crit[n]))
+            choices[s, c, n] * costs[s] * (1 - prefsnew.get((n, c), crit[n]) / (crit[n] + 1))
             for s in slots for n in names for c in clubs),
         GRB.MINIMIZE)
 

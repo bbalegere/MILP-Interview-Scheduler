@@ -12,9 +12,10 @@ def read_input_csv(filename):
                 row_header = csvline.split(',')
                 continue
             row = csvline.split(',')
-            for i in xrange(1, len(row)):
+            col_header.add(row[0])
+            for i in range(1, len(row)):
                 matrix[row[0], row_header[i]] = float(row[i])
-                col_header.add(row[0])
+
     row_header.pop(0)
     col_header = sorted(col_header)
     return matrix, row_header, col_header
@@ -22,11 +23,11 @@ def read_input_csv(filename):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print >> sys.stderr, "Usage: InterviewScheduler Shortlists.csv SlotsPanels.csv Prefs.csv"
+        print("Usage: InterviewScheduler Shortlists.csv SlotsPanels.csv Prefs.csv")
         exit(-1)
-    
+
     print(datetime.now().time())
-	
+
     shortlists, clubs, names = read_input_csv(sys.argv[1])
     print('Number of Clubs')
     print(len(clubs))
@@ -42,32 +43,40 @@ if __name__ == "__main__":
     assert (sorted(names) == sorted(names2))
     totalClubs = len(clubs) + 1
 
-    costs = dict()
+    # Find out max number of panels
+    maxpanels = dict((c, max(panels[s, c] for s in slots)) for c in clubs)
 
-    maxpanels = dict()
-    for c in clubs:
-        maxpanels[c] = 0
-        for s in slots:
-            if panels[s, c] > maxpanels[c]:
-                maxpanels[c] = panels[s, c]
+    # Generate cost of slots
+    costs = dict((slots[s], s + 1) for s in range(len(slots)))
 
-    for s in xrange(len(slots)):
-        costs[slots[s]] = s + 1
+    # Calculate number shortlists for each students
+    crit = dict((n, sum(shortlists[n, c] for c in clubs)) for n in names)
+
+    # Rescaled prefs
+    prefsnew = dict()
+
+    for n in names:
+        actpref = dict((c, prefs[n, c] * shortlists[n, c]) for c in clubs if shortlists[n, c] > 0)
+        scaledpref = {key: rank for rank, key in enumerate(sorted(actpref, key=actpref.get), 1)}
+
+        for c, rank in scaledpref.items():
+            prefsnew[n, c] = rank
 
     print('Creating IPLP')
+
     prob = LpProblem("ClubSelections", LpMinimize)
 
     choices = LpVariable.dicts("Choice", (slots, clubs, names), 0, 1, LpInteger)
-    totalstudents = sum(shortlists.values())
+    total = min(sum(shortlists.values()), sum(panels.values()))
 
     # Objective - allocate max students to the initial few slots
     prob += lpSum(
-        [choices[s][c][n] * costs[s] * (totalClubs - prefs[n, c]) for s in slots for n in names for c in
+        [choices[s][c][n] * costs[s] * (1 - prefsnew.get((n, c), crit[n]) / (crit[n] + 1)) for s in slots for n in names for c in
          clubs]), "Sum_of_costs_all_students"
 
     # Constraint all students to be allocated
     prob += lpSum(
-        [choices[s][c][n] for s in slots for n in names for c in clubs]) == totalstudents, "Sum_of_all_students"
+        [choices[s][c][n] for s in slots for n in names for c in clubs]) == total, "Sum_of_all_students"
 
     # Constraint - maximum number in a slot for a club is limited by panels
     for c in clubs:
@@ -86,7 +95,7 @@ if __name__ == "__main__":
             prob += lpSum([choices[s][c][n] for c in clubs]) <= 1, "Sum_slots_per_student_all_clubs_%s_%s" % (s, n)
 
     print('Write the LP Problem')
-    prob.writeLP("ClubSelectionroblem.lp")
+    # prob.writeLP("ClubSelectionroblem.lp")
     # prob.solve()
     print('Begin Solving')
     # prob.solve(GUROBI_CMD())
@@ -94,7 +103,7 @@ if __name__ == "__main__":
     prob.solve(COINMP_DLL())
     # prob.solve(GUROBI())
 
-    print ("Status:", LpStatus[prob.status])
+    print("Status:", LpStatus[prob.status])
 
     schedout = open('schedule.csv', 'w')
     line = 'Slot'
@@ -107,17 +116,37 @@ if __name__ == "__main__":
     for s in slots:
         line = s
         for c in clubs:
-            l = [''] * int(maxpanels[c])
+            row = [''] * int(maxpanels[c])
             i = 0
             for n in names:
                 if choices[s][c][n].varValue == 1:
-                    l[i] = n
+                    row[i] = n + ' ' + str(int(prefsnew[n, c])) + '_' + str(int(crit[n]))
                     i = i + 1
 
-            line = line + ',' + ','.join(l)
+            line = line + ',' + ','.join(row)
 
         schedout.write(line + '\n')
 
     schedout.close()
+
+    namesout = open('names.csv', 'w')
+    line = 'Slot'
+
+    for n in names:
+        line = line + ',' + n
+
+    namesout.write(line + '\n')
+    for s in slots:
+        line = s
+        for n in names:
+            row = ''
+            for c in clubs:
+                if choices[s][c][n].varValue == 1:
+                    row = c + '_' + str(int(prefsnew[n, c]))
+
+            line = line + ',' + row
+
+        namesout.write(line + '\n')
+
+    namesout.close()
     print(datetime.now().time())
-	
