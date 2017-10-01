@@ -40,7 +40,6 @@ if __name__ == "__main__":
     prefs, clubs3, names2 = read_input_csv(sys.argv[3])
     assert (sorted(clubs) == sorted(clubs2))
     assert (sorted(clubs) == sorted(clubs3))
-    assert (sorted(names) == sorted(names2))
 
     # Find out max number of panels
     maxpanels = dict((c, max(panels[s, c] for s in slots)) for c in clubs)
@@ -51,15 +50,34 @@ if __name__ == "__main__":
     # Calculate number shortlists for each students
     crit = dict((n, sum(shortlists[n, c] for c in clubs)) for n in names)
 
-    # Rescaled prefs
-    prefsnew = dict()
+    # Remove names who dont have any shortlists
+    names = [key for key, value in crit.items() if value > 0]
 
+    # Calculate number shortlists per company
+    compshortlists = dict((c, sum(shortlists[n, c] for n in names)) for c in clubs)
+
+    # Calculate total number of panels per company
+    comppanels = dict((c, sum(panels[s, c] for s in slots)) for c in clubs)
+
+    for c in clubs:
+        if compshortlists[c] > comppanels[c]:
+            print(
+                c + " has shortlists greater than no of panels " + str(compshortlists[c]) + " > " + str(comppanels[c]))
+
+    # Create Objective Coefficients
+    prefsnew = dict()
+    objcoeff = dict()
     for n in names:
         actpref = dict((c, prefs[n, c] * shortlists[n, c]) for c in clubs if shortlists[n, c] > 0)
         scaledpref = {key: rank for rank, key in enumerate(sorted(actpref, key=actpref.get), 1)}
 
         for c, rank in scaledpref.items():
             prefsnew[n, c] = rank
+            for s in slots:
+                if compshortlists[c] > comppanels[c]:
+                    objcoeff[s, c, n] = (rank / (crit[n] + 1)) * (len(slots) + 1 - costs[s])
+                else:
+                    objcoeff[s, c, n] = (1 - rank / (crit[n] + 1)) * costs[s]
 
     print('Creating IPLP')
 
@@ -69,14 +87,9 @@ if __name__ == "__main__":
     # Objective - allocate max students to the initial few slots
     model.setObjective(
         quicksum(
-            choices[s, c, n] * costs[s] * (1 - prefsnew.get((n, c), crit[n]) / (crit[n] + 1))
+            choices[s, c, n] * objcoeff.get((s, c, n), 1)
             for s in slots for n in names for c in clubs),
         GRB.MINIMIZE)
-
-    total = min(sum(shortlists.values()), sum(panels.values()))
-
-    # Constraint all students to be allocated
-    model.addConstr(choices.sum(), GRB.EQUAL, total, 'maxallocate')
 
     # Constraint - maximum number in a slot for a club is limited by panels
     model.addConstrs((choices.sum(s, c, '*') <= panels[s, c] for s in slots for c in clubs))
@@ -86,6 +99,9 @@ if __name__ == "__main__":
 
     # Constraint - slots should not conflict for a student
     model.addConstrs((choices.sum(s, '*', n) <= 1 for s in slots for n in names))
+
+    # Constraint - allocate all students or number of interviews possible
+    model.addConstrs((choices.sum('*', c, '*') == min(compshortlists[c], comppanels[c]) for c in clubs))
 
     print('Optimising')
     model.optimize()
