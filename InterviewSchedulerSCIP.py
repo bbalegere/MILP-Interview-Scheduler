@@ -1,7 +1,7 @@
 import sys
-
-from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
 from datetime import datetime
+
+from pyscipopt import Model, quicksum
 
 
 def read_input_csv(filename):
@@ -41,7 +41,6 @@ if __name__ == "__main__":
     assert (sorted(clubs) == sorted(clubs2))
     assert (sorted(clubs) == sorted(clubs3))
     assert (sorted(names) == sorted(names2))
-    totalClubs = len(clubs) + 1
 
     # Find out max number of panels
     maxpanels = dict((c, max(panels[s, c] for s in slots)) for c in clubs)
@@ -65,7 +64,7 @@ if __name__ == "__main__":
     print('Creating IPLP')
 
     m = Model()
-    #m.setPresolve(SCIP_PARAMSETTING.OFF)
+    # m.setPresolve(SCIP_PARAMSETTING.OFF)
 
     choices = {}
     for s in slots:

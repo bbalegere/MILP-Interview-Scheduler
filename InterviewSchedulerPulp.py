@@ -41,7 +41,6 @@ if __name__ == "__main__":
     assert (sorted(clubs) == sorted(clubs2))
     assert (sorted(clubs) == sorted(clubs3))
     assert (sorted(names) == sorted(names2))
-    totalClubs = len(clubs) + 1
 
     # Find out max number of panels
     maxpanels = dict((c, max(panels[s, c] for s in slots)) for c in clubs)
@@ -71,7 +70,8 @@ if __name__ == "__main__":
 
     # Objective - allocate max students to the initial few slots
     prob += lpSum(
-        [choices[s][c][n] * costs[s] * (1 - prefsnew.get((n, c), crit[n]) / (crit[n] + 1)) for s in slots for n in names for c in
+        [choices[s][c][n] * costs[s] * (1 - prefsnew.get((n, c), crit[n]) / (crit[n] + 1)) for s in slots for n in names
+         for c in
          clubs]), "Sum_of_costs_all_students"
 
     # Constraint all students to be allocated
@@ -94,14 +94,9 @@ if __name__ == "__main__":
         for n in names:
             prob += lpSum([choices[s][c][n] for c in clubs]) <= 1, "Sum_slots_per_student_all_clubs_%s_%s" % (s, n)
 
-    print('Write the LP Problem')
-    # prob.writeLP("ClubSelectionroblem.lp")
-    # prob.solve()
     print('Begin Solving')
-    # prob.solve(GUROBI_CMD())
-    # prob.solve(CPLEX_CMD())
+
     prob.solve(COINMP_DLL())
-    # prob.solve(GUROBI())
 
     print("Status:", LpStatus[prob.status])
 
