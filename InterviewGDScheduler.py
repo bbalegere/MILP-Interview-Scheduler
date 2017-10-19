@@ -70,13 +70,24 @@ def read_gdPanels(filename):
     return gdcomps
 
 
+def read_lp(filename):
+    lp = set()
+    with open(filename) as f:
+        for csvline in f:
+            csvline = csvline.strip()
+            row = csvline.split(',')
+            lp.add(row[0])
+
+    return sorted(lp)
+
+
 def usage():
     print("Usage: InterviewScheduler -s Shortlists.csv -t SlotsPanels.csv -p Prefs.csv -i SlotsInterview.csv -f ManualSched.csv")
 
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, "hi:f:s:t:g:", ["help", "interviewslots=", "fixed=", "shortlist=", "time=", "gdpanels="])
+        opts, args = getopt.getopt(argv, "hi:f:s:t:g:l:", ["help", "interviewslots=", "fixed=", "shortlist=", "time=", "gdpanels=", "leftprocess="])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -89,6 +100,7 @@ def main(argv):
     slots_int = dict()
     fixedints = dict()
     gdpanels = list()
+    lp = list()
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             usage()
@@ -126,11 +138,13 @@ def main(argv):
             gdpanels = read_gdPanels(arg)
             gdcomps = [y for x in gdpanels for y in x]
             assert (sorted(companies) == sorted(gdcomps))
+        elif opt in ("-l", "--leftprocess"):
+            lp = read_lp(arg)
 
-    generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels)
+    generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels, lp)
 
 
-def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels):
+def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels, lp):
     print(datetime.now().time())
     # Find out max number of panels
     maxpanels = dict((c, max(panels[s, c] for s in slots)) for c in companies)
@@ -139,15 +153,16 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
     # Calculate number shortlists for each students
     crit = dict((n, sum(shortlists.get((n, c), 0) for c in companies)) for n in names)
     # Remove names who dont have any shortlists
-    names = [key for key, value in crit.items() if value > 0]
+    names = [key for key, value in crit.items() if value > 2 and key not in lp]
+    buffernames = [key for key, value in crit.items() if value <= 2 and key not in lp]
     # Calculate number shortlists per company
     compshortlists = dict((c, sum(shortlists.get((n, c), 0) for n in names)) for c in companies)
     # Calculate total number of panels per company
-    comppanels = dict((c, int(sum(panels[s, c] for s in slots) / slots_int.get(c, 1))) for c in companies)
+    comppanels = dict((g[0], int(sum(panels[s, c] for s in slots for c in g) / slots_int.get(g[0], 1))) for g in gdpanels)
 
-    for c in companies:
-        if compshortlists[c] > comppanels[c]:
-            print(c + " has shortlists greater than no of panels " + str(compshortlists[c]) + " > " + str(comppanels[c]))
+    for c in gdpanels:
+        if compshortlists[c[0]] > comppanels[c[0]]:
+            print(c[0] + " has shortlists greater than no of panels " + str(compshortlists[c[0]]) + " > " + str(comppanels[c[0]]))
 
     print('Creating IPLP')
     model = Model('interviews')
@@ -222,6 +237,16 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
     namesout.close()
     print(model.status)
     print(datetime.now().time())
+    bufferout = open('bufferlist.csv', 'w')
+    for c in gdpanels:
+        line = c[0]
+        for n in buffernames:
+            if shortlists.get((n, c[0]), 0) > 0:
+                line = line + ',' + n
+
+        bufferout.write(line + '\n')
+
+    bufferout.close()
 
 
 if __name__ == "__main__":
