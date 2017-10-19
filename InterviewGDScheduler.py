@@ -1,31 +1,26 @@
 import argparse
 from datetime import datetime
 
+import numpy as np
+import pandas as pd
 from gurobipy import *
 
-import pandas as pd
 
-
-def read_input_csv(filename, type=None):
-    sldf = pd.read_csv(filename, index_col=0, header=0, dtype=type)
-
+def read_input_csv(filename, typ=None):
+    sldf = pd.read_csv(filename, index_col=0, header=0, dtype=typ)
     return sldf.to_dict('index'), sorted(sldf.columns.values), list(sldf.index.values)
 
 
 def read_slots_interviews(filename):
     sidict = pd.read_csv(filename, dtype=object).to_dict('list')
-
     return dict((key, int(v[0])) for key, v in sidict.items())
 
 
 def read_shortlists(filename):
     sldf = pd.read_csv(filename, dtype=object)
-    comtupl = tuplelist()
     comps = list(sldf.columns.values)
-    for c in comps:
-        comtupl = comtupl + [(x, c) for x in list(sldf[c].dropna().values)]
-
-    return dict((x, 1) for x in comtupl), comps, sorted(set([x[0] for x in comtupl]))
+    comtupl, shdict = multidict(((c, n), 1) for c in comps for n in list(sldf[c].dropna().values))
+    return dict((x, 1) for x in comtupl), comps, sorted(set([x[1] for x in comtupl]))
 
 
 def read_gdPanels(filename):
@@ -53,12 +48,12 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
     # Generate cost of slots
     costs = dict((slots[s], s + 1) for s in range(len(slots)))
     # Calculate number shortlists for each students
-    crit = dict((n, sum(shortlists.get((n, c), 0) for c in companies)) for n in names)
+    crit = dict((n, sum(shortlists.get((c, n), 0) for c in companies)) for n in names)
     # Remove names who dont have any shortlists
     names = [key for key, value in crit.items() if value > 2]
     buffernames = [key for key, value in crit.items() if value <= 2]
     # Calculate number shortlists per company
-    compshortlists = dict((c, sum(shortlists.get((n, c), 0) for n in names)) for c in companies)
+    compshortlists = dict((c, sum(shortlists.get((c, n), 0) for n in names)) for c in companies)
     # Calculate total number of panels per company
     comppanels = dict((g[0], int(sum(panels[s][c] for s in slots for c in g) / slots_int.get(g[0], 1))) for g in gdpanels)
 
@@ -68,13 +63,14 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
 
     print('Creating IPLP')
     model = Model('interviews')
-    choices = model.addVars(slots, companies, names, vtype=GRB.BINARY, name='G')
+    compnames = tuplelist(shortlists.keys())
+    choices = model.addVars(slots, compnames, vtype=GRB.BINARY, name='G')
     # Objective - allocate max students to the initial few slots
-    model.setObjective(quicksum(choices[s, c, n] * costs[s] for s in slots for n in names for c in companies), GRB.MINIMIZE)
+    model.setObjective(quicksum(choices[s, c, n] * costs[s] for s in slots for c, n in compnames), GRB.MINIMIZE)
     # Constraint - maximum number in a slot for a club is limited by panels
     model.addConstrs((choices.sum(s, c, '*') <= panels[s][c] for s in slots for c in companies))
     # Constraint - allocate student only if he has a shortlist
-    model.addConstrs((choices.sum('*', c, n) <= shortlists.get((n, c[0]), 0) * slots_int.get(c[0], 1) for n in names for c in gdpanels))
+    model.addConstrs((choices.sum('*', c, n) <= shortlists.get((c[0], n), 0) * slots_int.get(c[0], 1) for n in names for c in gdpanels))
     # Constraint - slots should not conflict for a student
     model.addConstrs((choices.sum(s, '*', n) <= 1 for s in slots for n in names))
     # Constraint - allocate all students or number of interviews possible
@@ -88,7 +84,7 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
 
         if si > 1:
             for i in range(si - 1 + start_slot, len(slots), si):
-                for n in names:
+                for x, n in compnames.select(c, '*'):
                     for j in range(i - si + 1, i):
                         model.addConstr((choices[slots[i], c, n] - choices[slots[j], c, n]), GRB.EQUAL, 0)
 
@@ -112,7 +108,7 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
         for c in companies:
             row = [''] * int(maxpanels[c])
             i = 0
-            for n in names:
+            for x, n in compnames.select(c, '*'):
                 if solution[s, c, n] == 1:
                     row[i] = n
                     i = i + 1
@@ -130,7 +126,7 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
         line = s
         for n in names:
             row = ''
-            for c in companies:
+            for c, x in compnames.select('*', n):
                 if solution[s, c, n] == 1:
                     row = c
 
@@ -144,7 +140,7 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
     for c in gdpanels:
         line = c[0]
         for n in buffernames:
-            if shortlists.get((n, c[0]), 0) > 0:
+            if shortlists.get((c[0], n), 0) > 0:
                 line = line + ',' + n
 
         bufferout.write(line + '\n')
@@ -172,17 +168,8 @@ if __name__ == "__main__":
     print(len(slots))
     assert (sorted(companies) == sorted(comp2))
 
-    for val in shortlists.values():
-        if val not in [0, 1]:
-            raise ValueError('The shortlists data can have only 0s or 1s indicating whether the student has a shortlist or not')
-
-    for vall in panels.values():
-        for val in vall.values():
-            # if not val.is_integer():
-            #   raise ValueError('The number of panels should be a whole number')
-
-            if val < 0:
-                raise ValueError('The number of panels cannot be negative')
+    if len([x for vals in panels.values() for x in vals.values() if not np.issubdtype(x, int) or x < 0]):
+        raise ValueError('The number of panels must be a positive integer ')
 
     slots_int = read_slots_interviews(args.slotsgd)
     assert (sorted(slots_int.keys()) == sorted(companies))
@@ -193,7 +180,7 @@ if __name__ == "__main__":
 
     fixedints = dict()
     if args.fixed:
-        fixedints, clubs4, slots2 = read_input_csv(args.fixed, type=object)
+        fixedints, clubs4, slots2 = read_input_csv(args.fixed, typ=object)
 
     lp = list()
     if args.leftprocess:
