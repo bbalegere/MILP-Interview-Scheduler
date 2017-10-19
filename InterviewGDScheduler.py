@@ -1,4 +1,4 @@
-import getopt
+import argparse
 from datetime import datetime
 
 from gurobipy import *
@@ -79,69 +79,6 @@ def read_lp(filename):
             lp.add(row[0])
 
     return sorted(lp)
-
-
-def usage():
-    print("Usage: InterviewScheduler -s Shortlists.csv -t SlotsPanels.csv -p Prefs.csv -i SlotsInterview.csv -f ManualSched.csv")
-
-
-def main(argv):
-    try:
-        opts, args = getopt.getopt(argv, "hi:f:s:t:g:l:", ["help", "interviewslots=", "fixed=", "shortlist=", "time=", "gdpanels=", "leftprocess="])
-    except getopt.GetoptError:
-        usage()
-        sys.exit(2)
-
-    shortlists = dict()
-    companies = list()
-    names = list()
-    slots = list()
-    panels = dict()
-    slots_int = dict()
-    fixedints = dict()
-    gdpanels = list()
-    lp = list()
-    for opt, arg in opts:
-        if opt in ("-h", "--help"):
-            usage()
-            sys.exit()
-        elif opt in ("-s", "--shortlist"):
-            shortlists, companies, names = read_shortlists(arg)
-        elif opt in ("-t", "--time"):
-            panels, comp2, slots = read_input_csv(arg)
-            print('Number of Companies')
-            print(len(companies))
-            print('Number of Candidates')
-            print(len(names))
-            print('Number of Slots')
-            print(len(slots))
-
-            assert (sorted(companies) == sorted(comp2))
-
-            for val in shortlists.values():
-                if val not in [0, 1]:
-                    raise ValueError('The shortlists data can have only 0s or 1s indicating whether the student has a shortlist or not')
-
-            for val in panels.values():
-                if not val.is_integer():
-                    raise ValueError('The number of panels should be a whole number')
-
-                if val < 0:
-                    raise ValueError('The number of panels cannot be negative')
-
-        elif opt in ("-i", "--interviewslots"):
-            slots_int = read_slots_interviews(arg)
-            assert (sorted(slots_int.keys()) == sorted(companies))
-        elif opt in ("-f", "--fixed"):
-            fixedints, clubs4, slots2 = read_input_csv(arg)
-        elif opt in ("-g", "--gdpanels"):
-            gdpanels = read_gdPanels(arg)
-            gdcomps = [y for x in gdpanels for y in x]
-            assert (sorted(companies) == sorted(gdcomps))
-        elif opt in ("-l", "--leftprocess"):
-            lp = read_lp(arg)
-
-    generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels, lp)
 
 
 def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels, lp):
@@ -250,4 +187,49 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('shortlists', help='Shortlists File as CSV', metavar='Shortlists.csv')
+    parser.add_argument('slotspanels', help='Slots and Panels as CSV', metavar='SlotsPanels.csv')
+    parser.add_argument('slotsgd', help='Number of Slots required for the GD', metavar='SlotsGG.csv')
+    parser.add_argument('gdslots', help='CSV containing dummy company names indicating different panels', metavar='GDSlots.csv')
+    parser.add_argument('-l', '--leftprocess', help='CSV with a list of candidates who have left the process', metavar='lp.csv')
+    parser.add_argument('-f', '--fixed', help='CSV of the schedule with pre fixed candidates. Should satisfy constraints', metavar='fixed.csv')
+
+    args = parser.parse_args()
+    shortlists, companies, names = read_shortlists(args.shortlists)
+    panels, comp2, slots = read_input_csv(args.slotspanels)
+    print('Number of Companies')
+    print(len(companies))
+    print('Number of Candidates')
+    print(len(names))
+    print('Number of Slots')
+    print(len(slots))
+    assert (sorted(companies) == sorted(comp2))
+
+    for val in shortlists.values():
+        if val not in [0, 1]:
+            raise ValueError('The shortlists data can have only 0s or 1s indicating whether the student has a shortlist or not')
+
+    for val in panels.values():
+        if not val.is_integer():
+            raise ValueError('The number of panels should be a whole number')
+
+        if val < 0:
+            raise ValueError('The number of panels cannot be negative')
+
+    slots_int = read_slots_interviews(args.slotsgd)
+    assert (sorted(slots_int.keys()) == sorted(companies))
+
+    gdpanels = read_gdPanels(args.gdslots)
+    gdcomps = [y for x in gdpanels for y in x]
+    assert (sorted(companies) == sorted(gdcomps))
+
+    fixedints = dict()
+    if args.fixed:
+        fixedints, clubs4, slots2 = read_input_csv(args.fixed)
+
+    lp = list()
+    if args.leftprocess:
+        lp = read_lp(args.leftprocess)
+
+    generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels, lp)
