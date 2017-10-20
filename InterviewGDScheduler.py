@@ -88,17 +88,33 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
                     for j in range(i - si + 1, i):
                         model.addConstr((choices[slots[i], c, n] - choices[slots[j], c, n]), GRB.EQUAL, 0)
 
-    # Constraint - Fix manually given schedule
-    for idx, val in fixedints.items():
-        for idx2, n in val.items():
-            if n in names:
-                model.addConstr(choices[idx, idx2, n], GRB.EQUAL, 1)
+    flist = [(s, c, n) for s, vals in fixedints.items() for c, n in vals.items() if (c, n) in compnames]
+    model.addConstrs((choices[s, c, n] == 1 for s, c, n in flist))
 
     print('Optimising')
     model.optimize()
     solution = model.getAttr('X', choices)
+
+    sche = [['Slot'] + [c for c in companies for j in range(int(maxpanels[c]))]]
+
+    for s in slots:
+        temp = [s]
+        for c in companies:
+            row = [''] * int(maxpanels[c])
+            i = 0
+            for n in [name for com, name in compnames if com == c]:
+                if solution.get((s, c, n), 0):
+                    row[i] = n
+                    i = i + 1
+            temp = temp + row
+        sche.append(temp)
+
+    schedf = pd.DataFrame(sche)
+    schedf.to_csv('sche.csv', index=False, header=False)
+
     schedout = open('schedule.csv', 'w')
     line = 'Slot'
+
     for c in companies:
         for j in range(int(maxpanels[c])):
             line = line + ',' + c + str(j + 1)
@@ -117,23 +133,11 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
 
         schedout.write(line + '\n')
     schedout.close()
-    namesout = open('names.csv', 'w')
-    line = 'Slot'
-    for n in names:
-        line = line + ',' + n
-    namesout.write(line + '\n')
-    for s in slots:
-        line = s
-        for n in names:
-            row = ''
-            for c, x in compnames.select('*', n):
-                if solution[s, c, n] == 1:
-                    row = c
 
-            line = line + ',' + row
+    soldf2 = pd.DataFrame.from_dict(dict((s, {n: c for c in companies for n in names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
+    soldf2.sort_index(axis=1, inplace=True)
+    soldf2.to_csv('names2.csv')
 
-        namesout.write(line + '\n')
-    namesout.close()
     print(model.status)
     print(datetime.now().time())
     bufferout = open('bufferlist.csv', 'w')
