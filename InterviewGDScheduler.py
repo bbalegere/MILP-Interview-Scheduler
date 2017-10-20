@@ -112,44 +112,13 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
     schedf = pd.DataFrame(sche)
     schedf.to_csv('sche.csv', index=False, header=False)
 
-    schedout = open('schedule.csv', 'w')
-    line = 'Slot'
+    namesdf = pd.DataFrame.from_dict(dict((s, {n: c for c in companies for n in names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
+    namesdf.sort_index(axis=1).to_csv('names2.csv')
 
-    for c in companies:
-        for j in range(int(maxpanels[c])):
-            line = line + ',' + c + str(j + 1)
-    schedout.write(line + '\n')
-    for s in slots:
-        line = s
-        for c in companies:
-            row = [''] * int(maxpanels[c])
-            i = 0
-            for x, n in compnames.select(c, '*'):
-                if solution[s, c, n] == 1:
-                    row[i] = n
-                    i = i + 1
-
-            line = line + ',' + ','.join(row)
-
-        schedout.write(line + '\n')
-    schedout.close()
-
-    soldf2 = pd.DataFrame.from_dict(dict((s, {n: c for c in companies for n in names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
-    soldf2.sort_index(axis=1, inplace=True)
-    soldf2.to_csv('names2.csv')
+    pd.DataFrame([[c[0]] + [n for n in buffernames if shortlists.get((c[0], n), 0)] for c in gdpanels]).to_csv('buff.csv', index=False, header=False)
 
     print(model.status)
     print(datetime.now().time())
-    bufferout = open('bufferlist.csv', 'w')
-    for c in gdpanels:
-        line = c[0]
-        for n in buffernames:
-            if shortlists.get((c[0], n), 0) > 0:
-                line = line + ',' + n
-
-        bufferout.write(line + '\n')
-
-    bufferout.close()
 
 
 if __name__ == "__main__":
