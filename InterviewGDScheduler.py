@@ -63,7 +63,7 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
 
     print('Creating IPLP')
     model = Model('interviews')
-    compnames = tuplelist(shortlists.keys())
+    compnames = tuplelist([(c, n) for c, n in shortlists.keys() if n in names])
     choices = model.addVars(slots, compnames, vtype=GRB.BINARY, name='G')
     # Objective - allocate max students to the initial few slots
     model.setObjective(quicksum(choices[s, c, n] * costs[s] for s in slots for c, n in compnames), GRB.MINIMIZE)
@@ -117,6 +117,10 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
 
     pd.DataFrame([[c[0]] + [n for n in buffernames if shortlists.get((c[0], n), 0)] for c in gdpanels]).to_csv('buff.csv', index=False, header=False)
 
+    tl = [(n, c[0], 1, i + 1) for c in gdpanels for i, dc in enumerate(c) for n in names if solution.get((slots[0], dc, n), 0)]
+
+    sl = pd.DataFrame(tl, columns=['Name', 'Company', 'Round', 'Panel'])
+    sl.sort_values(['Company', 'Panel']).to_csv('staticupload.csv', index=False)
     print(model.status)
     print(datetime.now().time())
 
