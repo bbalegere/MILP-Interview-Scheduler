@@ -82,7 +82,7 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
     compnames = tuplelist([(c, n) for c, n in shortlists.keys() if n in names])
     choices = model.addVars(slots, compnames, vtype=GRB.BINARY, name='G')
     # Objective - allocate max students to the initial few slots
-    model.setObjective(quicksum(choices[s, c, n] * objcoeff.get((s, c, n), 1) for s in slots for c, n in compnames), GRB.MINIMIZE)
+    model.setObjective(quicksum(choices[s, c, n] * objcoeff.get((s, c, n), costs[s]) for s in slots for c, n in compnames), GRB.MINIMIZE)
     # Constraint - maximum number in a slot for a club is limited by panels
     model.addConstrs((choices.sum(s, c, '*') <= panels[s][c] for s in slots for c in companies))
     # Constraint - allocate student only if he has a shortlist
@@ -121,7 +121,7 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
             i = 0
             for n in [name for com, name in compnames if com == c]:
                 if solution.get((s, c, n), 0):
-                    row[i] = n + ' ' + str(int(prefsnew[n, c])) + '_' + str(int(crit[n]))
+                    row[i] = n + ' ' + str(int(prefsnew.get((n, c), 0))) + '_' + str(int(crit[n]))
                     i = i + 1
             temp = temp + row
         sche.append(temp)
@@ -129,9 +129,8 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
     schedf = pd.DataFrame(sche)
     schedf.to_csv('out\\sche.csv', index=False, header=False)
 
-    namesdf = pd.DataFrame.from_dict(dict(
-        (s, {n: (c + ' ' + str(int(prefsnew[n, c])) + '_' + str(int(crit[n]))) for c in companies for n in names if solution.get((s, c, n), 0)}) for s
-        in slots), orient='index')
+    namesdf = pd.DataFrame.from_dict(dict((s, {n: (c + ' ' + str(int(prefsnew.get((n, c), 0))) + '_' + str(int(crit[n]))) for c in companies for n in
+                                               names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
     namesdf.sort_index(axis=1).to_csv('out\\names2.csv')
 
     pd.DataFrame([(n, c, 1, 1) for c in companies for n in names if solution.get((slots[0], c, n), 0)],
@@ -140,24 +139,26 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
     print(model.status)
     print(datetime.now().time())
 
-    unordn = set()
-    for n in names:
-        init = 1
-        for s in slots:
-            stop = False
-            for c in companies:
-                if solution.get((s, c, n), 0) == 1:
-                    if prefsnew[n, c] < init:
-                        unordn.add(n)
-                        stop = True
-                        break
-                    else:
-                        init = prefsnew[n, c]
+    if prefsnew:
+        unordn = set()
+        for n in names:
+            init = 1
+            for s in slots:
+                stop = False
+                for c in companies:
+                    if solution.get((s, c, n), 0) == 1:
+                        if prefsnew[n, c] < init:
+                            unordn.add(n)
+                            stop = True
+                            break
+                        else:
+                            init = prefsnew[n, c]
 
-            if stop:
-                break
-    print(unordn)
-    print(len(unordn))
+                if stop:
+                    break
+        print('The following candidates preference order has been violated')
+        print(unordn)
+        print(len(unordn))
 
 
 if __name__ == "__main__":
@@ -187,19 +188,29 @@ if __name__ == "__main__":
     slots_int = read_slots_interviews(args.slotsint)
     assert (sorted(slots_int.keys()) == sorted(companies))
 
-    prefs = dict()
-
-    if args.prefs:
-        prefs, comps3, names2 = read_input_csv(args.prefs)
-        assert (sorted(companies) == sorted(comps3))
-
-    fixedints = dict()
-    if args.fixed:
-        fixedints, clubs4, slots2 = read_input_csv(args.fixed, typ=object)
-
     lp = list()
     if args.leftprocess:
         lp = read_lp(args.leftprocess)
         names = [n for n in names if n not in lp]
+
+    prefs = dict()
+
+    if args.prefs:
+        prefs, comps3, names2 = read_input_csv(args.prefs)
+        for vals in prefs.values():
+            for val in vals.values():
+                if val not in range(1, len(companies) + 1):
+                    raise ValueError('Incorrect preference ' + str(val) + '. It should be between 1 and ' + str(len(companies)))
+        assert (sorted(companies) == sorted(comps3))
+
+        missing = set(names) - set(names2)
+        if len(missing):
+            print('Preferences are missing for below names')
+            print(missing)
+            raise ValueError('Some names are mssing')
+
+    fixedints = dict()
+    if args.fixed:
+        fixedints, clubs4, slots2 = read_input_csv(args.fixed, typ=object)
 
     generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int)
