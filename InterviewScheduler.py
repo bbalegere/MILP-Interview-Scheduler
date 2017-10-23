@@ -34,7 +34,7 @@ def read_lp(filename):
     return sorted(set(exnames))
 
 
-def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int):
+def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int, out):
     print(datetime.now().time())
     # Find out max number of panels
     maxpanels = dict((c, max(panels[s][c] for s in slots)) for c in companies)
@@ -75,7 +75,7 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
                     else:
                         objcoeff[s, c, n] = (1 - rank / (crit[n] + 1)) * costs[s]
 
-        pd.DataFrame([(k[0], k[1], v) for k, v in prefsnew.items()]).to_csv("out\\prefsupload.csv", header=False, index=False)
+        pd.DataFrame([(k[0], k[1], v) for k, v in prefsnew.items()]).to_csv(out+"\\prefsupload.csv", header=False, index=False)
 
     print('Creating IPLP')
     model = Model('interviews')
@@ -127,14 +127,14 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
         sche.append(temp)
 
     schedf = pd.DataFrame(sche)
-    schedf.to_csv('out\\sche.csv', index=False, header=False)
+    schedf.to_csv(out+'\\sche.csv', index=False, header=False)
 
     namesdf = pd.DataFrame.from_dict(dict((s, {n: (c + ' ' + str(int(prefsnew.get((n, c), 0))) + '_' + str(int(crit[n]))) for c in companies for n in
                                                names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
-    namesdf.sort_index(axis=1).to_csv('out\\names.csv')
+    namesdf.sort_index(axis=1).to_csv(out+'\\names.csv')
 
     pd.DataFrame([(n, c, 1, 1) for c in companies for n in names if solution.get((slots[0], c, n), 0)],
-                 columns=['Name', 'Company', 'Round', 'Panel']).to_csv('out\\staticupload.csv', index=False)
+                 columns=['Name', 'Company', 'Round', 'Panel']).to_csv(out+'\\staticupload.csv', index=False)
 
     print(model.status)
     print(datetime.now().time())
@@ -169,6 +169,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--prefs', help='CSV with a matrix containing names and companies', metavar='prefs.csv')
     parser.add_argument('-l', '--leftprocess', help='CSV with a list of candidates who have left the process', metavar='lp.csv')
     parser.add_argument('-f', '--fixed', help='CSV of the schedule with pre fixed candidates. Should satisfy constraints', metavar='fixed.csv')
+    parser.add_argument('-o', '--output', help='Output directory', default='out')
 
     args = parser.parse_args()
     shortlists, companies, names = read_shortlists(args.shortlists)
@@ -213,7 +214,8 @@ if __name__ == "__main__":
     if args.fixed:
         fixedints, clubs4, slots2 = read_input_csv(args.fixed, typ=object)
 
-    if not os.path.exists('out'):
-        os.makedirs('out')
 
-    generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int)
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
+
+    generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int, args.output)
