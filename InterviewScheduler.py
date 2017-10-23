@@ -8,20 +8,24 @@ from gurobipy import *
 
 def read_input_csv(filename, typ=None):
     sldf = pd.read_csv(filename, header=0, dtype=typ)
-    sldf[sldf.columns[0]] = sldf[sldf.columns[0]].astype(str)
+    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_')
+    sldf[sldf.columns[0]] = sldf[sldf.columns[0]].astype(str).str.strip().str.lower().str.replace(' ', '_')
     sldf.set_index(sldf.columns[0], inplace=True)
     return sldf.to_dict('index'), sorted(sldf.columns.values), list(sldf.index.values)
 
 
 def read_slots_interviews(filename):
-    sidict = pd.read_csv(filename, dtype=object).to_dict('list')
+    sidf = pd.read_csv(filename, dtype=object)
+    sidf.columns = sidf.columns.str.strip().str.lower().str.replace(' ', '_')
+    sidict = sidf.to_dict('list')
     return dict((key, int(v[0])) for key, v in sidict.items())
 
 
 def read_shortlists(filename):
     sldf = pd.read_csv(filename, dtype=object)
+    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_')
     comps = list(sldf.columns.values)
-    comtupl = [(c, n) for c in comps for n in list(sldf[c].dropna().values)]
+    comtupl = [(c, str(n).strip().lower().replace(' ', '_')) for c in comps for n in list(sldf[c].dropna().values)]
     return dict((x, 1) for x in comtupl), comps, sorted(set([x[1] for x in comtupl]))
 
 
@@ -29,7 +33,7 @@ def read_lp(filename):
     exnames = []
     with open(filename) as f:
         for csvline in f:
-            exnames = exnames + [str(x).strip() for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
+            exnames = exnames + [str(x).strip().lower().replace(' ', '_') for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
 
     return sorted(set(exnames))
 
@@ -75,7 +79,7 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
                     else:
                         objcoeff[s, c, n] = (1 - rank / (crit[n] + 1)) * costs[s]
 
-        pd.DataFrame([(k[0], k[1], v) for k, v in prefsnew.items()]).to_csv(out+"\\prefsupload.csv", header=False, index=False)
+        pd.DataFrame([(k[0], k[1], v) for k, v in prefsnew.items()]).to_csv(out + "\\prefsupload.csv", header=False, index=False)
 
     print('Creating IPLP')
     model = Model('interviews')
@@ -127,14 +131,14 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
         sche.append(temp)
 
     schedf = pd.DataFrame(sche)
-    schedf.to_csv(out+'\\sche.csv', index=False, header=False)
+    schedf.to_csv(out + '\\sche.csv', index=False, header=False)
 
     namesdf = pd.DataFrame.from_dict(dict((s, {n: (c + ' ' + str(int(prefsnew.get((n, c), 0))) + '_' + str(int(crit[n]))) for c in companies for n in
                                                names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
-    namesdf.sort_index(axis=1).to_csv(out+'\\names.csv')
+    namesdf.sort_index(axis=1).to_csv(out + '\\names.csv')
 
     pd.DataFrame([(n, c, 1, 1) for c in companies for n in names if solution.get((slots[0], c, n), 0)],
-                 columns=['Name', 'Company', 'Round', 'Panel']).to_csv(out+'\\staticupload.csv', index=False)
+                 columns=['Name', 'Company', 'Round', 'Panel']).to_csv(out + '\\staticupload.csv', index=False)
 
     print(model.status)
     print(datetime.now().time())
@@ -212,8 +216,7 @@ if __name__ == "__main__":
 
     fixedints = dict()
     if args.fixed:
-        fixedints, clubs4, slots2 = read_input_csv(args.fixed, typ=object)
-
+        fixedints, comps4, slots2 = read_input_csv(args.fixed, typ=object)
 
     if not os.path.exists(args.output):
         os.makedirs(args.output)
