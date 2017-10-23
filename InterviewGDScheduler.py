@@ -19,7 +19,7 @@ def read_slots_interviews(filename):
 def read_shortlists(filename):
     sldf = pd.read_csv(filename, dtype=object)
     comps = list(sldf.columns.values)
-    comtupl, shdict = multidict(((c, n), 1) for c in comps for n in list(sldf[c].dropna().values))
+    comtupl = [(c, n) for c in comps for n in list(sldf[c].dropna().values)]
     return dict((x, 1) for x in comtupl), comps, sorted(set([x[1] for x in comtupl]))
 
 
@@ -36,7 +36,7 @@ def read_lp(filename):
     exnames = []
     with open(filename) as f:
         for csvline in f:
-            exnames = exnames + [x for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
+            exnames = exnames + [str(x).strip() for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
 
     return sorted(set(exnames))
 
@@ -110,17 +110,18 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
         sche.append(temp)
 
     schedf = pd.DataFrame(sche)
-    schedf.to_csv('sche.csv', index=False, header=False)
+    schedf.to_csv('out\\sche.csv', index=False, header=False)
 
     namesdf = pd.DataFrame.from_dict(dict((s, {n: c for c in companies for n in names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
-    namesdf.sort_index(axis=1).to_csv('names2.csv')
+    namesdf.sort_index(axis=1).to_csv('out\\names2.csv')
 
-    pd.DataFrame([[c[0]] + [n for n in buffernames if shortlists.get((c[0], n), 0)] for c in gdpanels]).to_csv('buff.csv', index=False, header=False)
+    pd.DataFrame([[c[0]] + [n for n in buffernames if shortlists.get((c[0], n), 0)] for c in gdpanels]).to_csv('out\\buff.csv', index=False,
+                                                                                                               header=False)
 
     tl = [(n, c[0], 1, i + 1) for c in gdpanels for i, dc in enumerate(c) for n in names if solution.get((slots[0], dc, n), 0)]
 
     sl = pd.DataFrame(tl, columns=['Name', 'Company', 'Round', 'Panel'])
-    sl.sort_values(['Company', 'Panel']).to_csv('staticupload.csv', index=False)
+    sl.sort_values(['Company', 'Panel']).to_csv('out\\staticupload.csv', index=False)
     print(model.status)
     print(datetime.now().time())
 
@@ -163,5 +164,8 @@ if __name__ == "__main__":
     if args.leftprocess:
         lp = read_lp(args.leftprocess)
         names = [n for n in names if n not in lp]
+
+    if not os.path.exists('out'):
+        os.makedirs('out')
 
     generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels)
