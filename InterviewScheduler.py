@@ -21,7 +21,7 @@ def read_slots_interviews(filename):
 def read_shortlists(filename):
     sldf = pd.read_csv(filename, dtype=object)
     comps = list(sldf.columns.values)
-    comtupl, shdict = multidict(((c, n), 1) for c in comps for n in list(sldf[c].dropna().values))
+    comtupl = [(c, n) for c in comps for n in list(sldf[c].dropna().values)]
     return dict((x, 1) for x in comtupl), comps, sorted(set([x[1] for x in comtupl]))
 
 
@@ -112,7 +112,7 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
     model.optimize()
     solution = model.getAttr('X', choices)
 
-    sche = [['Slot'] + [c for c in companies for j in range(int(maxpanels[c]))]]
+    sche = [['Slot'] + [c + str(j + 1) for c in companies for j in range(int(maxpanels[c]))]]
 
     for s in slots:
         temp = [s]
@@ -131,7 +131,7 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
 
     namesdf = pd.DataFrame.from_dict(dict((s, {n: (c + ' ' + str(int(prefsnew.get((n, c), 0))) + '_' + str(int(crit[n]))) for c in companies for n in
                                                names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
-    namesdf.sort_index(axis=1).to_csv('out\\names2.csv')
+    namesdf.sort_index(axis=1).to_csv('out\\names.csv')
 
     pd.DataFrame([(n, c, 1, 1) for c in companies for n in names if solution.get((slots[0], c, n), 0)],
                  columns=['Name', 'Company', 'Round', 'Panel']).to_csv('out\\staticupload.csv', index=False)
@@ -212,5 +212,8 @@ if __name__ == "__main__":
     fixedints = dict()
     if args.fixed:
         fixedints, clubs4, slots2 = read_input_csv(args.fixed, typ=object)
+
+    if not os.path.exists('out'):
+        os.makedirs('out')
 
     generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int)
