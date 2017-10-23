@@ -29,7 +29,7 @@ def read_lp(filename):
     exnames = []
     with open(filename) as f:
         for csvline in f:
-            exnames = exnames + [x for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
+            exnames = exnames + [str(x).strip() for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
 
     return sorted(set(exnames))
 
