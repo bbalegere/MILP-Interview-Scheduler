@@ -1,33 +1,42 @@
 import argparse
 from datetime import datetime
+from string import punctuation
 
 import numpy as np
 import pandas as pd
 from gurobipy import *
 
+table = str.maketrans({key: None for key in punctuation})
+
 
 def read_input_csv(filename, typ=None):
-    sldf = pd.read_csv(filename, index_col=0, header=0, dtype=typ)
+    sldf = pd.read_csv(filename, header=0, dtype=typ)
+    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_').str.translate(table)
+    sldf[sldf.columns[0]] = sldf[sldf.columns[0]].astype(str).str.strip().str.lower().str.replace(' ', '_')
+    sldf.set_index(sldf.columns[0], inplace=True)
     return sldf.to_dict('index'), sorted(sldf.columns.values), list(sldf.index.values)
 
 
 def read_slots_interviews(filename):
-    sidict = pd.read_csv(filename, dtype=object).to_dict('list')
+    sidf = pd.read_csv(filename, dtype=object)
+    sidf.columns = sidf.columns.str.strip().str.lower().str.replace(' ', '_').str.translate(table)
+    sidict = sidf.to_dict('list')
     return dict((key, int(v[0])) for key, v in sidict.items())
 
 
 def read_shortlists(filename):
     sldf = pd.read_csv(filename, dtype=object)
+    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_').str.translate(table)
     comps = list(sldf.columns.values)
-    comtupl = [(c, n) for c in comps for n in list(sldf[c].dropna().values)]
-    return dict((x, 1) for x in comtupl), comps, sorted(set([x[1] for x in comtupl]))
+    comtupl = [(c, str(n).strip().lower().replace(' ', '_')) for c in comps for n in list(sldf[c].dropna().values)]
+    return dict((x, 1) for x in comtupl), sorted(comps), sorted(set([x[1] for x in comtupl]))
 
 
 def read_gdPanels(filename):
     gdcomp = set()
     with open(filename) as f:
         for csvline in f:
-            gdcomp.add(tuple([x for x in csvline.strip().split(',') if x]))
+            gdcomp.add(tuple([str(x).strip().lower().replace(' ', '_').translate(table) for x in csvline.strip().split(',') if x]))
 
     return gdcomp
 
@@ -36,12 +45,12 @@ def read_lp(filename):
     exnames = []
     with open(filename) as f:
         for csvline in f:
-            exnames = exnames + [str(x).strip() for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
+            exnames = exnames + [str(x).strip().lower().replace(' ', '_') for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
 
     return sorted(set(exnames))
 
 
-def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels):
+def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels, skipinitial, out):
     print(datetime.now().time())
     # Find out max number of panels
     maxpanels = dict((c, max(panels[s][c] for s in slots)) for c in companies)
@@ -91,6 +100,8 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
     flist = [(s, c, n) for s, vals in fixedints.items() for c, n in vals.items() if (c, n) in compnames]
     model.addConstrs((choices[s, c, n] == 1 for s, c, n in flist))
 
+    model.addConstrs((choices.sum(slots[0], c, n) == 0 for c in companies for n in skipinitial))
+
     print('Optimising')
     model.optimize()
     solution = model.getAttr('X', choices)
@@ -110,18 +121,18 @@ def generateSchedule(companies, fixedints, names, panels, shortlists, slots, slo
         sche.append(temp)
 
     schedf = pd.DataFrame(sche)
-    schedf.to_csv('out\\sche.csv', index=False, header=False)
+    schedf.to_csv(out + '\\sche.csv', index=False, header=False)
 
     namesdf = pd.DataFrame.from_dict(dict((s, {n: c for c in companies for n in names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
-    namesdf.sort_index(axis=1).to_csv('out\\names2.csv')
+    namesdf.sort_index(axis=1).to_csv(out + '\\names.csv')
 
-    pd.DataFrame([[c[0]] + [n for n in buffernames if shortlists.get((c[0], n), 0)] for c in gdpanels]).to_csv('out\\buff.csv', index=False,
+    pd.DataFrame([[c[0]] + [n for n in buffernames if shortlists.get((c[0], n), 0)] for c in gdpanels]).to_csv(out + '\\buff.csv', index=False,
                                                                                                                header=False)
 
     tl = [(n, c[0], 1, i + 1) for c in gdpanels for i, dc in enumerate(c) for n in names if solution.get((slots[0], dc, n), 0)]
 
     sl = pd.DataFrame(tl, columns=['Name', 'Company', 'Round', 'Panel'])
-    sl.sort_values(['Company', 'Panel']).to_csv('out\\staticupload.csv', index=False)
+    sl.sort_values(['Company', 'Panel']).to_csv(out + '\\staticupload.csv', index=False)
     print(model.status)
     print(datetime.now().time())
 
@@ -134,6 +145,8 @@ if __name__ == "__main__":
     parser.add_argument('gdslots', help='CSV containing dummy company names indicating different panels', metavar='GDSlots.csv')
     parser.add_argument('-l', '--leftprocess', help='CSV with a list of candidates who have left the process', metavar='lp.csv')
     parser.add_argument('-f', '--fixed', help='CSV of the schedule with pre fixed candidates. Should satisfy constraints', metavar='fixed.csv')
+    parser.add_argument('-o', '--output', help='Output directory', default='out')
+    parser.add_argument('-s', '--skipinitial', help='Skip initial few slots', metavar='skip.csv')
 
     args = parser.parse_args()
     shortlists, companies, names = read_shortlists(args.shortlists)
@@ -165,7 +178,11 @@ if __name__ == "__main__":
         lp = read_lp(args.leftprocess)
         names = [n for n in names if n not in lp]
 
-    if not os.path.exists('out'):
-        os.makedirs('out')
+    skip = list()
+    if args.skipinitial:
+        skip = read_lp(args.skipinitial)
 
-    generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels)
+    if not os.path.exists(args.output):
+        os.makedirs(args.output)
+
+    generateSchedule(companies, fixedints, names, panels, shortlists, slots, slots_int, gdpanels, skip, args.output)
