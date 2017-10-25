@@ -1,14 +1,17 @@
 import argparse
 from datetime import datetime
+from string import punctuation
 
 import numpy as np
 import pandas as pd
 from gurobipy import *
 
+table = str.maketrans({key: None for key in punctuation})
+
 
 def read_input_csv(filename, typ=None):
     sldf = pd.read_csv(filename, header=0, dtype=typ)
-    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_')
+    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_').str.translate(table)
     sldf[sldf.columns[0]] = sldf[sldf.columns[0]].astype(str).str.strip().str.lower().str.replace(' ', '_')
     sldf.set_index(sldf.columns[0], inplace=True)
     return sldf.to_dict('index'), sorted(sldf.columns.values), list(sldf.index.values)
@@ -16,17 +19,17 @@ def read_input_csv(filename, typ=None):
 
 def read_slots_interviews(filename):
     sidf = pd.read_csv(filename, dtype=object)
-    sidf.columns = sidf.columns.str.strip().str.lower().str.replace(' ', '_')
+    sidf.columns = sidf.columns.str.strip().str.lower().str.replace(' ', '_').str.translate(table)
     sidict = sidf.to_dict('list')
     return dict((key, int(v[0])) for key, v in sidict.items())
 
 
 def read_shortlists(filename):
     sldf = pd.read_csv(filename, dtype=object)
-    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_')
+    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_').str.translate(table)
     comps = list(sldf.columns.values)
     comtupl = [(c, str(n).strip().lower().replace(' ', '_')) for c in comps for n in list(sldf[c].dropna().values)]
-    return dict((x, 1) for x in comtupl), comps, sorted(set([x[1] for x in comtupl]))
+    return dict((x, 1) for x in comtupl), sorted(comps), sorted(set([x[1] for x in comtupl]))
 
 
 def read_lp(filename):
@@ -185,6 +188,8 @@ if __name__ == "__main__":
     print(len(names))
     print('Number of Slots')
     print(len(slots))
+    print(set(companies) ^ set(comp2))
+
     assert (sorted(companies) == sorted(comp2))
 
     if len([x for vals in panels.values() for x in vals.values() if not np.issubdtype(x, int) or x < 0]):
