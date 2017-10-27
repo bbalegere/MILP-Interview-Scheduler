@@ -86,7 +86,7 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
 
     print('Creating IPLP')
     model = Model('interviews')
-    compnames = tuplelist([(c, n) for c, n in shortlists.keys() if n in names])
+    compnames = tuplelist([(c, n) for c, n in shortlists.keys() if n in names and c in companies])
     choices = model.addVars(slots, compnames, vtype=GRB.BINARY, name='G')
     # Objective - allocate max students to the initial few slots
     model.setObjective(quicksum(choices[s, c, n] * objcoeff.get((s, c, n), costs[s]) for s in slots for c, n in compnames), GRB.MINIMIZE)
@@ -179,18 +179,18 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--output', help='Output directory', default='out')
 
     args = parser.parse_args()
-    shortlists, companies, names = read_shortlists(args.shortlists)
+    shortlists, shcompanies, names = read_shortlists(args.shortlists)
 
-    panels, comp2, slots = read_input_csv(args.slotspanels)
+    panels, companies, slots = read_input_csv(args.slotspanels)
     print('Number of Companies')
     print(len(companies))
     print('Number of Candidates')
     print(len(names))
     print('Number of Slots')
     print(len(slots))
-    print(set(companies) ^ set(comp2))
-
-    assert (sorted(companies) == sorted(comp2))
+    print(set(companies) ^ set(shcompanies))
+    if not set(companies).issubset(set(shcompanies)):
+        raise ValueError('Shortlists are not present for all companies')
 
     if len([x for vals in panels.values() for x in vals.values() if not np.issubdtype(x, int) or x < 0]):
         raise ValueError('The number of panels must be a positive integer ')
@@ -209,9 +209,9 @@ if __name__ == "__main__":
         prefs, comps3, names2 = read_input_csv(args.prefs)
         for vals in prefs.values():
             for val in vals.values():
-                if val not in range(1, len(companies) + 1):
+                if val not in range(1, len(shcompanies) + 1):
                     raise ValueError('Incorrect preference ' + str(val) + '. It should be between 1 and ' + str(len(companies)))
-        assert (sorted(companies) == sorted(comps3))
+        assert (set(companies).issubset(set(comps3)))
 
         missing = set(names) - set(names2)
         if len(missing):
