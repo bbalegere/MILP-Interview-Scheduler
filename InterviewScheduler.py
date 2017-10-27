@@ -41,7 +41,7 @@ def read_lp(filename):
     return sorted(set(exnames))
 
 
-def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int, out):
+def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int, allcomps, out):
     print(datetime.now().time())
     # Find out max number of panels
     maxpanels = dict((c, max(panels[s][c] for s in slots)) for c in companies)
@@ -67,14 +67,18 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
     # Create Objective Coefficients
     prefsnew = dict()
     objcoeff = dict()
+    prefsup = dict()
 
     if len(prefs):
-
         for n in names:
-            actpref = dict((c, prefs[n][c] * shortlists.get((c, n), 0)) for c in companies if shortlists.get((c, n), 0) > 0)
+            actpref = dict((c, prefs[n][c] * shortlists.get((c, n), 0)) for c in allcomps if shortlists.get((c, n), 0) > 0)
             scaledpref = {key: rank for rank, key in enumerate(sorted(actpref, key=actpref.get), 1)}
 
             for c, rank in scaledpref.items():
+                prefsup[n, c] = rank
+                if c not in companies:
+                    continue
+
                 prefsnew[n, c] = rank
                 for s in slots:
                     if compshortlists[c] > comppanels[c]:
@@ -82,7 +86,7 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
                     else:
                         objcoeff[s, c, n] = (1 - rank / (crit[n] + 1)) * costs[s]
 
-        pd.DataFrame([(k[0], k[1], v) for k, v in prefsnew.items()]).to_csv(out + "\\prefsupload.csv", header=False, index=False)
+        pd.DataFrame([(k[0], k[1], v) for k, v in prefsup.items()]).to_csv(out + "\\prefsupload.csv", header=False, index=False)
 
     print('Creating IPLP')
     model = Model('interviews')
@@ -212,6 +216,7 @@ if __name__ == "__main__":
                 if val not in range(1, len(shcompanies) + 1):
                     raise ValueError('Incorrect preference ' + str(val) + '. It should be between 1 and ' + str(len(companies)))
         assert (set(companies).issubset(set(comps3)))
+        assert (shcompanies == comps3)
 
         missing = set(names) - set(names2)
         if len(missing):
@@ -226,4 +231,4 @@ if __name__ == "__main__":
     if not os.path.exists(args.output):
         os.makedirs(args.output)
 
-    generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int, args.output)
+    generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int, shcompanies, args.output)
