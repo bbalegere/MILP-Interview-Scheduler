@@ -41,14 +41,14 @@ def read_lp(filename):
     return sorted(set(exnames))
 
 
-def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int, allcomps, out):
+def generateSchedule(companies, fixedints, allnames, panels, prefs, shortlists, slots, slots_int, out):
     print(datetime.now().time())
     # Find out max number of panels
     maxpanels = dict((c, max(panels[s][c] for s in slots)) for c in companies)
     # Generate cost of slots
     costs = dict((slots[s], s + 1) for s in range(len(slots)))
     # Calculate number shortlists for each students
-    crit = dict((n, sum(shortlists.get((c, n), 0) for c in companies)) for n in names)
+    crit = dict((n, sum(shortlists.get((c, n), 0) for c in companies)) for n in allnames)
     # Remove names who dont have any shortlists
     names = [key for key, value in crit.items() if value > 0]
     # Calculate number shortlists per company
@@ -67,26 +67,19 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
     # Create Objective Coefficients
     prefsnew = dict()
     objcoeff = dict()
-    prefsup = dict()
 
     if len(prefs):
         for n in names:
-            actpref = dict((c, prefs[n][c] * shortlists.get((c, n), 0)) for c in allcomps if shortlists.get((c, n), 0) > 0)
+            actpref = dict((c, prefs[n][c] * shortlists.get((c, n), 0)) for c in companies if shortlists.get((c, n), 0) > 0)
             scaledpref = {key: rank for rank, key in enumerate(sorted(actpref, key=actpref.get), 1)}
 
             for c, rank in scaledpref.items():
-                prefsup[n, c] = rank
-                if c not in companies:
-                    continue
-
                 prefsnew[n, c] = rank
                 for s in slots:
                     if compshortlists[c] > comppanels[c]:
                         objcoeff[s, c, n] = (rank / (crit[n] + 1)) * (len(slots) + 1 - costs[s])
                     else:
                         objcoeff[s, c, n] = (1 - rank / (crit[n] + 1)) * costs[s]
-
-        pd.DataFrame([(k[0], k[1], v) for k, v in prefsup.items()]).to_csv(out + "\\prefsupload.csv", header=False, index=False)
 
     print('Creating IPLP')
     model = Model('interviews')
@@ -118,6 +111,8 @@ def generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slo
     # Constraint - Fix manually given schedule
     flist = [(s, c, n) for s, vals in fixedints.items() for c, n in vals.items() if (c, n) in compnames]
     model.addConstrs((choices[s, c, n] == 1 for s, c, n in flist))
+
+    model.addConstrs((prefsnew[n, c] * choices[slots[0], c, n] <= 2 for c, n in compnames))
 
     print('Optimising')
     model.optimize()
@@ -214,7 +209,7 @@ if __name__ == "__main__":
         for vals in prefs.values():
             for val in vals.values():
                 if val not in range(1, len(shcompanies) + 1):
-                    raise ValueError('Incorrect preference ' + str(val) + '. It should be between 1 and ' + str(len(companies)))
+                    raise ValueError('Incorrect preference ' + str(val) + '. It should be between 1 and ' + str(len(shcompanies)))
         assert (set(companies).issubset(set(comps3)))
         assert (shcompanies == comps3)
 
@@ -231,4 +226,4 @@ if __name__ == "__main__":
     if not os.path.exists(args.output):
         os.makedirs(args.output)
 
-    generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int, shcompanies, args.output)
+    generateSchedule(companies, fixedints, names, panels, prefs, shortlists, slots, slots_int, args.output)
