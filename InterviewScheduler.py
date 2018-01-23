@@ -1,34 +1,38 @@
+"""
+    File name: IntSchedulerClubs.py
+    Author: Bharat Balegere
+    Date created: 10-Oct-2017
+    Date last modified: 22-Jan-2018
+    Python Version: 3.6
+"""
 import argparse
-from datetime import datetime
-from string import punctuation
+import datetime
 
 import numpy as np
 import pandas as pd
 from gurobipy import *
 
-table = str.maketrans({key: None for key in punctuation})
-
 
 def read_input_csv(filename, typ=None):
     sldf = pd.read_csv(filename, header=0, dtype=typ)
-    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_').str.translate(table)
-    sldf[sldf.columns[0]] = sldf[sldf.columns[0]].astype(str).str.strip().str.lower().str.replace(' ', '_')
+    sldf.columns = sldf.columns.str.strip()
+    sldf[sldf.columns[0]] = sldf[sldf.columns[0]].astype(str).str.strip()
     sldf.set_index(sldf.columns[0], inplace=True)
     return sldf.to_dict('index'), sorted(sldf.columns.values), list(sldf.index.values)
 
 
 def read_slots_interviews(filename):
     sidf = pd.read_csv(filename, dtype=object)
-    sidf.columns = sidf.columns.str.strip().str.lower().str.replace(' ', '_').str.translate(table)
+    sidf.columns = sidf.columns.str.strip()
     sidict = sidf.to_dict('list')
     return dict((key, int(v[0])) for key, v in sidict.items())
 
 
 def read_shortlists(filename):
     sldf = pd.read_csv(filename, dtype=object)
-    sldf.columns = sldf.columns.str.strip().str.lower().str.replace(' ', '_').str.translate(table)
+    sldf.columns = sldf.columns.str.strip()
     comps = list(sldf.columns.values)
-    comtupl = [(c, str(n).strip().lower().replace(' ', '_')) for c in comps for n in list(sldf[c].dropna().values)]
+    comtupl = [(c, str(n).strip()) for c in comps for n in list(sldf[c].dropna().values)]
     return dict((x, 1) for x in comtupl), sorted(comps), sorted(set([x[1] for x in comtupl]))
 
 
@@ -36,13 +40,13 @@ def read_lp(filename):
     exnames = []
     with open(filename) as f:
         for csvline in f:
-            exnames = exnames + [str(x).strip().lower().replace(' ', '_') for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
+            exnames = exnames + [str(x).strip() for x in csvline.strip().split(',') if len(str(x).strip()) > 0]
 
     return sorted(set(exnames))
 
 
 def generateSchedule(companies, fixedints, allnames, panels, prefs, shortlists, slots, slots_int, out):
-    print(datetime.now().time())
+    print(datetime.datetime.now().time())
     # Find out max number of panels
     maxpanels = dict((c, max(panels[s][c] for s in slots)) for c in companies)
     # Generate cost of slots
@@ -112,8 +116,6 @@ def generateSchedule(companies, fixedints, allnames, panels, prefs, shortlists, 
     flist = [(s, c, n) for s, vals in fixedints.items() for c, n in vals.items() if (c, n) in compnames]
     model.addConstrs((choices[s, c, n] == 1 for s, c, n in flist))
 
-    model.addConstrs((prefsnew[n, c] * choices[slots[0], c, n] <= 2 for c, n in compnames))
-
     print('Optimising')
     model.optimize()
     solution = model.getAttr('X', choices)
@@ -127,7 +129,7 @@ def generateSchedule(companies, fixedints, allnames, panels, prefs, shortlists, 
             i = 0
             for n in [name for com, name in compnames if com == c]:
                 if solution.get((s, c, n), 0):
-                    row[i] = n + ' ' + str(int(prefsnew.get((n, c), 0))) + '_' + str(int(crit[n]))
+                    row[i] = n
                     i = i + 1
             temp = temp + row
         sche.append(temp)
@@ -135,15 +137,11 @@ def generateSchedule(companies, fixedints, allnames, panels, prefs, shortlists, 
     schedf = pd.DataFrame(sche)
     schedf.to_csv(out + '\\sche.csv', index=False, header=False)
 
-    namesdf = pd.DataFrame.from_dict(dict((s, {n: (c + ' ' + str(int(prefsnew.get((n, c), 0))) + '_' + str(int(crit[n]))) for c in companies for n in
-                                               names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
+    namesdf = pd.DataFrame.from_dict(dict((s, {n: c for c in companies for n in names if solution.get((s, c, n), 0)}) for s in slots), orient='index')
     namesdf.sort_index(axis=1).to_csv(out + '\\names.csv')
 
-    pd.DataFrame([(n, c, 1, 1) for c in companies for n in names if solution.get((slots[0], c, n), 0)],
-                 columns=['Name', 'Company', 'Round', 'Panel']).to_csv(out + '\\staticupload.csv', index=False)
-
     print(model.status)
-    print(datetime.now().time())
+    print(datetime.datetime.now().time())
 
     if prefsnew:
         unordn = set()
@@ -171,7 +169,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('shortlists', help='Shortlists File per company as CSV', metavar='Shortlists.csv')
     parser.add_argument('slotspanels', help='Slots and Panels per company as CSV', metavar='SlotsPanels.csv')
-    parser.add_argument('slotsint', help='Number of Slots required per Interview for each company', metavar='SlotsInterview.csv')
+    parser.add_argument('-s', '--slotsint', help='Number of Slots required per Interview for each company', metavar='SlotsInterview.csv')
     parser.add_argument('-p', '--prefs', help='CSV with a matrix containing names and companies', metavar='prefs.csv')
     parser.add_argument('-l', '--leftprocess', help='CSV with a list of candidates who have left the process', metavar='lp.csv')
     parser.add_argument('-f', '--fixed', help='CSV of the schedule with pre fixed candidates. Should satisfy constraints', metavar='fixed.csv')
@@ -194,8 +192,10 @@ if __name__ == "__main__":
     if len([x for vals in panels.values() for x in vals.values() if not np.issubdtype(x, int) or x < 0]):
         raise ValueError('The number of panels must be a positive integer ')
 
-    slots_int = read_slots_interviews(args.slotsint)
-    assert (sorted(slots_int.keys()) == sorted(companies))
+    slots_int = dict()
+    if args.slotsint:
+        slots_int = read_slots_interviews(args.slotsint)
+        assert (sorted(slots_int.keys()) == sorted(companies))
 
     lp = list()
     if args.leftprocess:
