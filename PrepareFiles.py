@@ -1,3 +1,9 @@
+"""
+    Author: Bharat Balegere
+    Date created: 10-Oct-2017
+    Date last modified: 23-Jan-2018
+    Python Version: 3.6
+"""
 import argparse
 
 import pandas as pd
@@ -17,8 +23,10 @@ if __name__ == "__main__":
         shortlistdf = pd.DataFrame({c: pd.Series([n for n, x in shl if x == c]) for y, c in shl})
 
     gdslots = pd.read_csv(args.gdslots)
+    gddict = gdslots.to_dict('list')
     print(gdslots.info())
     companies = list(gdslots.columns.values)
+    shortlistdf = shortlistdf[companies]
     gdcomps = []
     slotspanels = []
     comps = []

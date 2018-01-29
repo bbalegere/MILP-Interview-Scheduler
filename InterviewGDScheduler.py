@@ -1,3 +1,9 @@
+"""
+    Author: Bharat Balegere
+    Date created: 10-Oct-2017
+    Date last modified: 23-Jan-2018
+    Python Version: 3.6
+"""
 import argparse
 from datetime import datetime
 from string import punctuation
